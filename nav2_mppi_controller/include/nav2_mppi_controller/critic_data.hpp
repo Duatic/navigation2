@@ -30,6 +30,7 @@
 #include "nav2_mppi_controller/models/state.hpp"
 #include "nav2_mppi_controller/models/trajectories.hpp"
 #include "nav2_mppi_controller/models/path.hpp"
+#include "nav2_mppi_controller/models/constraints.hpp"
 #include "nav2_mppi_controller/motion_models.hpp"
 
 
@@ -56,6 +57,7 @@ struct CriticData
   std::shared_ptr<MotionModel> motion_model;
   std::optional<std::vector<bool>> path_pts_valid;
   std::optional<size_t> furthest_reached_path_point;
+  const models::ControlConstraints * constraints{nullptr};
 };
 
 }  // namespace mppi

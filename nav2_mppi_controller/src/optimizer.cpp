@@ -82,12 +82,14 @@ void Optimizer::getParams()
   getParam(s.base_constraints.ay_max, "ay_max", 3.0f);
   getParam(s.base_constraints.ay_min, "ay_min", -3.0f);
   getParam(s.base_constraints.az_max, "az_max", 3.5f);
+  getParam(s.base_constraints.vxy_max, "vxy_max", 0.0f);
   getParam(s.sampling_std.vx, "vx_std", 0.2f);
   getParam(s.sampling_std.vy, "vy_std", 0.2f);
   getParam(s.sampling_std.wz, "wz_std", 0.4f);
   getParam(s.retry_attempt_limit, "retry_attempt_limit", 1);
 
   s.base_constraints.ax_max = std::abs(s.base_constraints.ax_max);
+  s.base_constraints.vxy_max = std::abs(s.base_constraints.vxy_max);
   if (s.base_constraints.ax_min > 0.0) {
     s.base_constraints.ax_min = -1.0 * s.base_constraints.ax_min;
     RCLCPP_WARN(
@@ -271,6 +273,20 @@ void Optimizer::applyControlSequenceConstraints()
 
   control_sequence_.vx = xt::clip(control_sequence_.vx, s.constraints.vx_min, s.constraints.vx_max);
   control_sequence_.wz = xt::clip(control_sequence_.wz, -s.constraints.wz, s.constraints.wz);
+
+  // Bound the combined translational speed sqrt(vx^2 + vy^2), else a holonomic robot can
+  // exceed its per-axis limits by driving diagonally. Scaling both components uniformly
+  // keeps the commanded direction of travel intact.
+  if (isHolonomic() && s.constraints.vxy_max > 0.0f) {
+    auto mag = xt::eval(xt::hypot(control_sequence_.vx, control_sequence_.vy));
+    auto scale = xt::eval(
+      xt::where(
+        mag > s.constraints.vxy_max,
+        s.constraints.vxy_max / xt::maximum(mag, 1e-6f),
+        1.0f));
+    control_sequence_.vx = control_sequence_.vx * scale;
+    control_sequence_.vy = control_sequence_.vy * scale;
+  }
 
   float max_delta_vx = s.model_dt * s.constraints.ax_max;
   float min_delta_vx = s.model_dt * s.constraints.ax_min;
@@ -486,6 +502,7 @@ void Optimizer::setSpeedLimit(double speed_limit, bool percentage)
     s.constraints.vx_min = s.base_constraints.vx_min;
     s.constraints.vy = s.base_constraints.vy;
     s.constraints.wz = s.base_constraints.wz;
+    s.constraints.vxy_max = s.base_constraints.vxy_max;
   } else {
     if (percentage) {
       // Speed limit is expressed in % from maximum speed of robot
@@ -494,6 +511,7 @@ void Optimizer::setSpeedLimit(double speed_limit, bool percentage)
       s.constraints.vx_min = s.base_constraints.vx_min * ratio;
       s.constraints.vy = s.base_constraints.vy * ratio;
       s.constraints.wz = s.base_constraints.wz * ratio;
+      s.constraints.vxy_max = s.base_constraints.vxy_max * ratio;
     } else {
       // Speed limit is expressed in absolute value
       double ratio = speed_limit / s.base_constraints.vx_max;
@@ -501,6 +519,7 @@ void Optimizer::setSpeedLimit(double speed_limit, bool percentage)
       s.constraints.vx_min = s.base_constraints.vx_min * ratio;
       s.constraints.vy = s.base_constraints.vy * ratio;
       s.constraints.wz = s.base_constraints.wz * ratio;
+      s.constraints.vxy_max = s.base_constraints.vxy_max * ratio;
     }
   }
   motion_model_->initialize(settings_.constraints, settings_.model_dt);

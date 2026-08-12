@@ -47,6 +47,7 @@ This process is then repeated a number of times and returns a converged solution
  | wz_std                     | double | Default 0.4. Sampling standard deviation for Wz                                                          |
  | vx_max                     | double | Default 0.5. Max VX (m/s)                                                                                |
  | vy_max                     | double | Default 0.5. Max VY in either direction, if holonomic. (m/s)                                             |
+ | vxy_max                    | double | Default 0.0 (disabled). Max combined translational speed sqrt(vx^2 + vy^2), if holonomic. (m/s) When > 0, caps diagonal motion so it is not faster than straight motion. |
  | vx_min                     | double | Default -0.35. Min VX (m/s)                                                                              |
  | wz_max                     | double | Default 1.9. Max WZ (rad/s)                                                                              |
  | temperature                | double | Default: 0.3. Selectiveness of trajectories by their costs (The closer this value to 0, the "more" we take in consideration controls with less cost), 0 mean use control with best cost, huge value will lead to just taking mean of all trajectories without cost consideration                                                   |
@@ -197,6 +198,7 @@ controller_server:
       vx_max: 0.5
       vx_min: -0.35
       vy_max: 0.5
+      vxy_max: 0.0
       wz_max: 1.9
       iteration_count: 1
       prune_distance: 1.7
@@ -297,7 +299,7 @@ The `model_dt` parameter generally should be set to the duration of your control
 
 Visualization of the trajectories using `visualize` uses compute resources to back out trajectories for visualization and therefore slows compute time. It is not suggested that this parameter is set to `true` during a deployed use, but is a useful debug instrument while tuning the system, but use sparingly. Visualizing 2000 batches @ 56 points at 30 hz is _a lot_.
 
-The most common parameters you might want to start off changing are the velocity profiles (`vx_max`, `vx_min`, `wz_max`, and `vy_max` if holonomic) and the `motion_model` to correspond to your vehicle. Its wise to consider the `prune_distance` of the path plan in proportion to your maximum velocity and prediction horizon. The only deeper parameter that will likely need to be adjusted for your particular settings is the Obstacle critics' `repulsion_weight` since the tuning of this is proportional to your inflation layer's radius. Higher radii should correspond to reduced `repulsion_weight` due to the penalty formation (e.g. `inflation_radius - min_dist_to_obstacle`). If this penalty is too high, the robot will slow significantly when entering cost-space from non-cost space or jitter in narrow corridors. It is noteworthy, but likely not necessary to be changed, that the Obstacle critic may use the full footprint information if `consider_footprint = true`, though comes at an increased compute cost.
+The most common parameters you might want to start off changing are the velocity profiles (`vx_max`, `vx_min`, `wz_max`, and `vy_max` if holonomic) and the `motion_model` to correspond to your vehicle. On a holonomic robot, note that `vx_max` and `vy_max` bound each axis independently, so diagonal motion is permitted up to `sqrt(vx_max^2 + vy_max^2)` — the optimizer will exploit this and travel diagonally to go faster. Set `vxy_max` (typically to `vx_max`) to bound the combined translational speed instead, both as a hard clamp on the emitted command and as a cost shaping the sampled trajectories. Its wise to consider the `prune_distance` of the path plan in proportion to your maximum velocity and prediction horizon. The only deeper parameter that will likely need to be adjusted for your particular settings is the Obstacle critics' `repulsion_weight` since the tuning of this is proportional to your inflation layer's radius. Higher radii should correspond to reduced `repulsion_weight` due to the penalty formation (e.g. `inflation_radius - min_dist_to_obstacle`). If this penalty is too high, the robot will slow significantly when entering cost-space from non-cost space or jitter in narrow corridors. It is noteworthy, but likely not necessary to be changed, that the Obstacle critic may use the full footprint information if `consider_footprint = true`, though comes at an increased compute cost.
 
 If you don't require path following behavior (e.g. just want to follow a goal pose and let the model predictive elements decide the best way to accomplish that), you may easily remove the PathAlign, PathFollow and PathAngle critics. 
 

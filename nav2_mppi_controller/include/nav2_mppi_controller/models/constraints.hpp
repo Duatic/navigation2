@@ -33,6 +33,7 @@ struct ControlConstraints
   float ay_max;
   float ay_min;
   float az_max;
+  float vxy_max;  // <= 0.0 disables the combined translational limit
 };
 
 /**

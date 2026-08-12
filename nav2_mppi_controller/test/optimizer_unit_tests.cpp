@@ -526,6 +526,68 @@ TEST(OptimizerTests, applyControlSequenceConstraintsTests)
   EXPECT_EQ(sequence.vx, -1.0 * xt::ones<float>({50}));
   EXPECT_EQ(sequence.vy, -0.75 * xt::ones<float>({50}));
   EXPECT_EQ(sequence.wz, -2.0 * xt::ones<float>({50}));
+
+  // vxy_max is not declared above, so it defaults to 0.0 (disabled) and the per-axis
+  // box behavior asserted in this test is the regression guard for that default.
+}
+
+TEST(OptimizerTests, applyControlSequenceConstraintsVxyMaxTests)
+{
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("my_node");
+  OptimizerTester optimizer_tester;
+  node->declare_parameter("controller_frequency", rclcpp::ParameterValue(30.0));
+  node->declare_parameter("mppic.batch_size", rclcpp::ParameterValue(1000));
+  node->declare_parameter("mppic.time_steps", rclcpp::ParameterValue(50));
+  node->declare_parameter("mppic.vx_max", rclcpp::ParameterValue(0.5));
+  node->declare_parameter("mppic.vx_min", rclcpp::ParameterValue(-0.5));
+  node->declare_parameter("mppic.vy_max", rclcpp::ParameterValue(0.5));
+  node->declare_parameter("mppic.vxy_max", rclcpp::ParameterValue(0.5));
+  node->declare_parameter("mppic.wz_max", rclcpp::ParameterValue(2.0));
+  auto costmap_ros = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
+    "dummy_costmap", "", "dummy_costmap", true);
+  ParametersHandler param_handler(node);
+  rclcpp_lifecycle::State lstate;
+  costmap_ros->on_configure(lstate);
+  optimizer_tester.initialize(node, "mppic", costmap_ros, &param_handler);
+
+  optimizer_tester.resetMotionModel();
+  optimizer_tester.testSetOmniModel();
+  auto & sequence = optimizer_tester.grabControlSequence();
+
+  EXPECT_NEAR(optimizer_tester.getControlConstraints().vxy_max, 0.5, 1e-6);
+
+  // The box corner (0.5, 0.5) has a resultant of 0.707 and must be scaled back to
+  // vxy_max, preserving the 45 degree direction of travel
+  sequence.vx = 0.5 * xt::ones<float>({50});
+  sequence.vy = 0.5 * xt::ones<float>({50});
+  sequence.wz = xt::zeros<float>({50});
+  optimizer_tester.applyControlSequenceConstraintsWrapper();
+  for (unsigned int i = 0; i != sequence.vx.shape(0); i++) {
+    EXPECT_LE(std::hypot(sequence.vx(i), sequence.vy(i)), 0.5 + 1e-5);
+    EXPECT_NEAR(sequence.vx(i), sequence.vy(i), 1e-6);
+    EXPECT_NEAR(sequence.vx(i), 0.5 / std::sqrt(2.0), 1e-5);
+  }
+
+  // Same for the negative corner
+  sequence.vx = -0.5 * xt::ones<float>({50});
+  sequence.vy = -0.5 * xt::ones<float>({50});
+  sequence.wz = xt::zeros<float>({50});
+  optimizer_tester.applyControlSequenceConstraintsWrapper();
+  for (unsigned int i = 0; i != sequence.vx.shape(0); i++) {
+    EXPECT_LE(std::hypot(sequence.vx(i), sequence.vy(i)), 0.5 + 1e-5);
+    EXPECT_NEAR(sequence.vx(i), -0.5 / std::sqrt(2.0), 1e-5);
+    EXPECT_NEAR(sequence.vy(i), -0.5 / std::sqrt(2.0), 1e-5);
+  }
+
+  // Sub-limit commands pass through untouched
+  sequence.vx = 0.2 * xt::ones<float>({50});
+  sequence.vy = 0.1 * xt::ones<float>({50});
+  sequence.wz = xt::zeros<float>({50});
+  optimizer_tester.applyControlSequenceConstraintsWrapper();
+  for (unsigned int i = 0; i != sequence.vx.shape(0); i++) {
+    EXPECT_NEAR(sequence.vx(i), 0.2, 1e-6);
+    EXPECT_NEAR(sequence.vy(i), 0.1, 1e-6);
+  }
 }
 
 TEST(OptimizerTests, updateStateVelocitiesTests)
