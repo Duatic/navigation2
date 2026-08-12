@@ -16,6 +16,7 @@
 #define NAV2_MPPI_CONTROLLER__CRITICS__CONSTRAINT_CRITIC_HPP_
 
 #include "nav2_mppi_controller/critic_function.hpp"
+#include "nav2_mppi_controller/models/constraints.hpp"
 #include "nav2_mppi_controller/models/state.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
 
@@ -43,6 +44,13 @@ public:
 
   float getMaxVelConstraint() {return max_vel_;}
   float getMinVelConstraint() {return min_vel_;}
+
+  /**
+   * @brief Recompute the velocity thresholds from the live control constraints
+   * @param c Current (speed-limit adjusted) constraints
+   * @param holonomic Whether the active motion model is holonomic
+   */
+  void updateConstraints(const models::ControlConstraints & c, bool holonomic);
 
 protected:
   unsigned int power_{0};

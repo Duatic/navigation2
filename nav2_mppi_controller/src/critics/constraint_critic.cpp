@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
+
 #include "nav2_mppi_controller/critics/constraint_critic.hpp"
 
 namespace mppi::critics
@@ -28,14 +30,30 @@ void ConstraintCritic::initialize()
     logger_, "ConstraintCritic instantiated with %d power and %f weight.",
     power_, weight_);
 
-  float vx_max, vy_max, vx_min;
-  getParentParam(vx_max, "vx_max", 0.5f);
-  getParentParam(vy_max, "vy_max", 0.0f);
-  getParentParam(vx_min, "vx_min", -0.35f);
+  // Fallback thresholds for when the optimizer does not supply live constraints via
+  // CriticData (standalone critic use). score() overrides these when it can.
+  models::ControlConstraints constraints{};
+  getParentParam(constraints.vx_max, "vx_max", 0.5f);
+  getParentParam(constraints.vy, "vy_max", 0.0f);
+  getParentParam(constraints.vx_min, "vx_min", -0.35f);
+  getParentParam(constraints.vxy_max, "vxy_max", 0.0f);
 
-  const float min_sgn = vx_min > 0.0f ? 1.0f : -1.0f;
-  max_vel_ = sqrtf(vx_max * vx_max + vy_max * vy_max);
-  min_vel_ = min_sgn * sqrtf(vx_min * vx_min + vy_max * vy_max);
+  updateConstraints(constraints, true);
+}
+
+void ConstraintCritic::updateConstraints(
+  const models::ControlConstraints & c, bool holonomic)
+{
+  const float min_sgn = c.vx_min > 0.0f ? 1.0f : -1.0f;
+  if (holonomic) {
+    const float box_max = sqrtf(c.vx_max * c.vx_max + c.vy * c.vy);
+    const float box_min = sqrtf(c.vx_min * c.vx_min + c.vy * c.vy);
+    max_vel_ = c.vxy_max > 0.0f ? std::min(c.vxy_max, box_max) : box_max;
+    min_vel_ = min_sgn * (c.vxy_max > 0.0f ? std::min(c.vxy_max, box_min) : box_min);
+  } else {
+    max_vel_ = c.vx_max;
+    min_vel_ = c.vx_min;
+  }
 }
 
 void ConstraintCritic::score(CriticData & data)
@@ -44,6 +62,10 @@ void ConstraintCritic::score(CriticData & data)
 
   if (!enabled_) {
     return;
+  }
+
+  if (data.constraints) {
+    updateConstraints(*data.constraints, data.motion_model->isHolonomic());
   }
 
   // Differential motion model

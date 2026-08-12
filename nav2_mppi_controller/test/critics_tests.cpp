@@ -129,6 +129,71 @@ TEST(CriticTests, ConstraintsCritic)
   EXPECT_NEAR(costs(1), 0.48, 0.01);
 }
 
+TEST(CriticTests, ConstraintsCriticVxyMax)
+{
+  // Standard preamble
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("my_node");
+  auto costmap_ros = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
+    "dummy_costmap", "", "dummy_costmap", true);
+  ParametersHandler param_handler(node);
+  rclcpp_lifecycle::State lstate;
+  costmap_ros->on_configure(lstate);
+
+  models::State state;
+  models::ControlSequence control_sequence;
+  models::Trajectories generated_trajectories;
+  models::Path path;
+  geometry_msgs::msg::Pose goal;
+  xt::xtensor<float, 1> costs = xt::zeros<float>({1000});
+  float model_dt = 0.1;
+  CriticData data =
+  {state, generated_trajectories, path, goal, costs, model_dt,
+    false, nullptr, nullptr, std::nullopt, std::nullopt};
+  data.motion_model = std::make_shared<OmniMotionModel>();
+
+  ConstraintCritic critic;
+  critic.on_configure(node, "mppi", "critic", costmap_ros, &param_handler);
+
+  // Without live constraints the critic keeps its initialize()-time thresholds:
+  // the corner of the vx/vy box, which sanctions diagonal speed-up
+  EXPECT_NEAR(critic.getMaxVelConstraint(), 0.5, 1e-6);
+
+  // Supplying live constraints with vxy_max tightens the threshold to a disc
+  models::ControlConstraints constraints{};
+  constraints.vx_max = 0.5f;
+  constraints.vx_min = -0.5f;
+  constraints.vy = 0.5f;
+  constraints.vxy_max = 0.4f;
+  data.constraints = &constraints;
+
+  // A diagonal rollout of hypot(0.35, 0.35) = 0.495 was previously free, now it costs
+  state.vx = 0.35 * xt::ones<float>({1000, 30});
+  state.vy = 0.35 * xt::ones<float>({1000, 30});
+  state.wz = xt::zeros<float>({1000, 30});
+  critic.score(data);
+  EXPECT_NEAR(critic.getMaxVelConstraint(), 0.4, 1e-6);
+  EXPECT_NEAR(critic.getMinVelConstraint(), -0.4, 1e-6);
+  EXPECT_GT(xt::sum(costs, immediate)(), 0);
+  // 4.0 weight * 0.1 model_dt * (0.4950 - 0.4) error * 30 timesteps = 1.14
+  EXPECT_NEAR(costs(0), 1.14, 0.01);
+  costs = xt::zeros<float>({1000});
+
+  // Within the disc, no cost
+  state.vx = 0.2 * xt::ones<float>({1000, 30});
+  state.vy = 0.2 * xt::ones<float>({1000, 30});
+  critic.score(data);
+  EXPECT_NEAR(xt::sum(costs, immediate)(), 0, 1e-6);
+  costs = xt::zeros<float>({1000});
+
+  // vxy_max = 0.0 disables it, falling back to the box corner
+  constraints.vxy_max = 0.0f;
+  state.vx = 0.35 * xt::ones<float>({1000, 30});
+  state.vy = 0.35 * xt::ones<float>({1000, 30});
+  critic.score(data);
+  EXPECT_NEAR(critic.getMaxVelConstraint(), std::sqrt(0.5), 1e-6);
+  EXPECT_NEAR(xt::sum(costs, immediate)(), 0, 1e-6);
+}
+
 TEST(CriticTests, ObstacleCriticMisalignedParams) {
   auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("my_node");
   auto costmap_ros = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
