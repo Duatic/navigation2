@@ -582,7 +582,7 @@ TEST(OptimizerTests, applyControlSequenceConstraintsTests)
   // Also tests param get of set vx/vy/wz min/maxes
 
   // Set model to omni to consider holonomic vy elements
-  // Ack is not tested here because `applyConstraints` is covered in detail
+  // Ack is not tested here because its constraint step is covered in detail
   // in motion_models_test.cpp
   optimizer_tester.resetMotionModel();
   optimizer_tester.testSetOmniModel();
@@ -688,6 +688,11 @@ TEST(OptimizerTests, applyControlSequenceConstraintsTests)
   constraints.ay_max = 1.0f;
   constraints.ay_min = -3.0f;
 
+  // The motion model owns the constraint stage, so reload it to pick the new limits up, as
+  // setSpeedLimit() does in the running controller
+  optimizer_tester.resetMotionModel();
+  optimizer_tester.testSetOmniModel();
+
   state.speed.linear.x = -0.5;
   state.speed.linear.y = 0.0;
   state.speed.angular.z = 0.0;
@@ -758,7 +763,7 @@ TEST(OptimizerTests, applyControlSequenceConstraintsPerAxisTests)
   node->declare_parameter(
     "mppic.omni.plugin", rclcpp::ParameterValue("mppi::OmniMotionModel"));
   node->declare_parameter(
-    "mppic.omni.constrain_translational_velocity", rclcpp::ParameterValue(false));
+    "mppic.omni.use_velocity_ellipse_scaling", rclcpp::ParameterValue(false));
   auto costmap_ros = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
     "dummy_costmap", "", true);
   std::string name = "test";
