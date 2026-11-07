@@ -37,6 +37,7 @@ set(dependencies_pkgs
 
 foreach(pkg IN LISTS dependencies_pkgs)
   find_package(${pkg} REQUIRED)
+  list(APPEND dependencies_targets ${${pkg}_TARGETS})
 endforeach()
 
 nav2_package()
@@ -102,7 +103,7 @@ foreach(lib IN LISTS libraries)
   endif()
   target_include_directories(${lib} PUBLIC ${xsimd_INCLUDE_DIRS})  #  ${OpenMP_INCLUDE_DIRS}
   target_link_libraries(${lib} xtensor xtensor::optimize xtensor::use_xsimd)
-  ament_target_dependencies(${lib} ${dependencies_pkgs})
+  target_link_libraries(${lib} ${dependencies_targets})
 endforeach()
 
 install(TARGETS mppi_controller mppi_critics
