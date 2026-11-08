@@ -18,8 +18,8 @@ foreach(name IN LISTS TEST_NAMES)
     ${name}.cpp
   )
 
-  ament_target_dependencies(${name}
-    ${dependencies_pkgs}
+  target_link_libraries(${name}
+    ${dependencies_targets}
   )
 
   target_link_libraries(${name}
@@ -36,7 +36,7 @@ endforeach()
 # Costmap2DROS like the tests above.
 if(nav2_costmap_2d_VERSION VERSION_LESS 1.4.0)
   ament_add_gtest(critics_tests critics_tests.cpp)
-  ament_target_dependencies(critics_tests ${dependencies_pkgs})
+  target_link_libraries(critics_tests ${dependencies_targets})
   target_link_libraries(critics_tests mppi_controller mppi_critics)
   if(${TEST_DEBUG_INFO})
     target_compile_definitions(critics_tests PUBLIC -DTEST_DEBUG_INFO)
